@@ -1,0 +1,103 @@
+'==============================CONSTANTS=============================='
+'PlayStartConstants'
+first_cube_clr = 0
+'Color'
+white_val = 66
+black_val = 10
+middle_val = (white_val + black_val) / 2 - 10
+'Movement'
+motors_speed = -40
+'PID'
+kp = 1 '0.35 on speed 80
+'Others'
+wheel_radius = 28
+crosswheel_distance = 110
+rotate_radius = 137 / 2
+'==============================VARIABLES=============================='
+
+'==============================PINS=============================='
+pin_motors = "AD"
+pin_motor_l = "D"
+pin_motor_r = "A"
+pin_sens_cross = 4
+pin_sens_line = 1
+
+'==============================METHODS=============================='
+'Movement on line and stop on cross'
+Sub line_move
+  While (Sensor.readPercent(pin_sens_cross) > middle_val)
+    p_value = (Sensor.readPercent(pin_sens_line) - middle_val - middle_val) * kp 
+    If (p_value < 0) Then
+      Motor.StartPower(pin_motor_l, p_value)
+      Motor.StartPower(pin_motor_r, motors_speed)
+    EndIf
+    If (p_value >= 0) Then
+      Motor.StartPower(pin_motor_l, -p_value)
+      Motor.StartPower(pin_motor_r, motors_speed)
+    EndIf
+  EndWhile
+  Motor.Stop(pin_motors,"true")
+EndSub
+
+'Ride to the center of cross after detecting it'
+Sub get_in_cross_centre
+  degrees = 180 * crosswheel_distance / (3.1416 * wheel_radius)
+  Motor.MoveSync(pin_motors, motors_speed, motors_speed, degrees, "true")
+EndSub
+
+'Rotate 90 degree LEFT'
+Sub rotate_90_left
+  degrees = 2 * 3.1416 * rotate_radius * 45 / (3.1416 * wheel_radius)
+  Motor.MoveSync(pin_motors, motors_speed, -motors_speed, degrees, "true")
+EndSub
+
+'Rotate 90 degree RIGHT'
+Sub rotate_90_right
+  degrees = 2 * 3.1416 * rotate_radius * 45 / (3.1416 * wheel_radius)
+  Motor.MoveSync(pin_motors, -motors_speed, motors_speed, degrees, "true")
+EndSub
+
+'Rotate 180 degree RIGHT'
+Sub rotate_180_right
+  degrees = 2 * 2 * 3.1416 * rotate_radius * 45 / (3.1416 * wheel_radius)
+  Motor.MoveSync(pin_motors, -motors_speed, motors_speed, degrees, "true")
+EndSub
+
+'Rotate 180 degree LEFT'
+Sub rotate_180_left
+  degrees = 2 * 2 * 3.1416 * rotate_radius * 45 / (3.1416 * wheel_radius)
+  Motor.MoveSync(pin_motors, motors_speed, -motors_speed, degrees, "true")
+EndSub
+
+'Rotate 180 degree LEFT'
+Sub move_to_cube_with_line
+  While (Sensor.readPercent(pin_sens_cross) > middle_val)
+    p_value = (Sensor.readPercent(pin_sens_line) - middle_val - middle_val) * kp 
+    If (p_value < 0) Then
+      Motor.StartPower(pin_motor_l, p_value)
+      Motor.StartPower(pin_motor_r, motors_speed)
+    EndIf
+    If (p_value >= 0) Then
+      Motor.StartPower(pin_motor_l, -p_value)
+      Motor.StartPower(pin_motor_r, motors_speed)
+    EndIf
+  EndWhile
+  Motor.Stop(pin_motors,"true")
+EndSub
+
+'==============================MAIN CODE=============================='
+Sub setup
+  Sensor.Setmode(pin_sens_line, 0)
+  Sensor.Setmode(pin_sens_cross, 0)
+EndSub
+
+Sub main
+  Motor.MoveSync(pin_motors, motors_speed, motors_speed, 340, "true")
+  line_move()
+  get_in_cross_centre()
+  rotate_90_right()
+  line_move()
+EndSub
+
+setup()
+main()
