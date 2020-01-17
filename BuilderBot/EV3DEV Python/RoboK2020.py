@@ -29,7 +29,8 @@ black_val = 10
 middle_val = (white_val + black_val) / 2 - 10  # Not middle yet
 
 # PID
-kp = 0.9
+kP = 0.9
+kD = 3
 
 
 # ------------------------------DEBUG------------------------------
@@ -54,13 +55,15 @@ class Debug:
 
 
 # ------------------------------VOID------------------------------
+def sign(x):
+    return -1 if x < 0 else (1 if x > 0 else 0)
 
 
-# ---------MOTORS-------------
 def dist_to_angle(dist):
     return 180 * dist // wheel_radius * 3.14
 
 
+# ---------MOTORS-------------
 class MotorsController:
     def __init__(self):
         self.motor_left = LargeMotor(pin_motors['LEFT'])
@@ -96,6 +99,7 @@ class MotorsController:
 
 
 def line_move(mc, distantion=0):
+    last_error = 0
     # Save initially values on encoders(in degrees)
     motor_l_enc = mc.get_motor_enc('LEFT')
     motor_r_enc = mc.get_motor_enc('RIGHT')
@@ -104,14 +108,51 @@ def line_move(mc, distantion=0):
         (mc.get_motor_enc('LEFT') - motor_l_enc < dist_to_angle(distantion) and
          mc.get_motor_enc('RIGHT') - motor_r_enc < dist_to_angle(distantion))
     while condition:
-        # Calculate PID(P) value
-        p_val = (sens_line.reflected_light_intensity - middle_val - middle_val) * kp
+        error = sens_line.reflected_light_intensity
+        # Calculate PID(PD) value
+        p_val = error * kP
+        d_val = (error - last_error) * kD
+        first_result = p_val - d_val
         # Run motors with speed by PID(P) value
-        speed_l = p_val if p_val < 0 else -p_val
-        mc.motors_t.on(speed_l, motor_speed)
+        if first_result > 0:
+            result = abs(motor_speed) - first_result
+            mc.motors_t.on(left_speed=result * sign(motor_speed), right_speed=motor_speed)
+        else:
+            result = abs(motor_speed) + first_result
+            mc.motors_t.on(left_speed=motor_speed, right_speed=result * sign(motor_speed))
+        # Save last_sens_line_val to next while iteration
+        last_error = error
+
     # Stop motors after cross/distantion_limit
     mc.motors_t.stop()
-
+'''
+old_value_main_sensor = 0
+new_value_main_sensor = 0
+white_value = 53
+black_value = 5
+kp = 1
+kd = 3
+port_left_sensor = 2
+port_right_sensor = 3
+motor_power_value = 30
+middle_value = (white_value + black_value) / 2 - 10
+while "true"
+  new_value_main_sensor = Sensor.readPercent(port_right_sensor) - middle_value
+  proportional_value = (new_value_main_sensor - middle_value) * kp
+  differential_value = (new_value_main_sensor - old_value_main_sensor) * kd
+  first_result = proportional_value - differential_value
+  if (first_result > 0) then
+    result = motor_power_value - first_result
+    Motor.StartPower("B", -result)
+    Motor.StartPower("C", -motor_power_value)
+  else
+    result = motor_power_value + first_result
+    Motor.StartPower("B", -motor_power_value)
+    Motor.StartPower("C", -result)
+  endif
+  old_value_main_sensor = new_value_main_sensor
+endwhile
+'''
 
 # ------------------------------MAIN------------------------------
 def setup():
