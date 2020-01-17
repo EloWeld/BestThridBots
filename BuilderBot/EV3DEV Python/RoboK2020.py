@@ -57,6 +57,10 @@ class Debug:
 
 
 # ---------MOTORS-------------
+def dist_to_angle(dist):
+    return 180 * dist // wheel_radius * 3.14
+
+
 class MotorsController:
     def __init__(self):
         self.motor_left = LargeMotor(pin_motors['LEFT'])
@@ -97,7 +101,8 @@ def line_move(mc, distantion=0):
     motor_r_enc = mc.get_motor_enc('RIGHT')
     # Cross or distantion
     condition = (sens_cross.reflected_light_intensity > middle_val) if distantion == 0 else \
-        (mc.get_motor_enc('LEFT') - motor_l_enc < distantion and mc.get_motor_enc('RIGHT') - motor_r_enc < distantion)
+        (mc.get_motor_enc('LEFT') - motor_l_enc < dist_to_angle(distantion) and
+         mc.get_motor_enc('RIGHT') - motor_r_enc < dist_to_angle(distantion))
     while condition:
         # Calculate PID(P) value
         p_val = (sens_line.reflected_light_intensity - middle_val - middle_val) * kp
