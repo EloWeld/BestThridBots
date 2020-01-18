@@ -14,8 +14,9 @@ pin_motors = {'LEFT': OUTPUT_A,
               'LIFT': OUTPUT_B,
               'CLAW': OUTPUT_C}
 
-sens_left = ColorSensor(INPUT_1)
-sens_right = ColorSensor(INPUT_4)
+sens_line = ColorSensor(INPUT_1)
+sens_cross = ColorSensor(INPUT_4)
+sens_mark = ColorSensor(INPUT_3)
 
 # ------------------------------CONSTANS------------------------------
 # Movement
@@ -23,6 +24,7 @@ wheel_radius = 55 // 2  # mm
 rotate_radius = 150 // 2  # mm
 motor_speed = -60
 cross_center_dist = 125
+mark_center_dist = 60
 
 # Claw
 lift_max_angle = 105
@@ -39,6 +41,12 @@ middle_val = (white_val + black_val) / 2 - 10  # Not middle yet
 kP = 0.9
 kD = 3
 
+# Maps
+boxes = []
+towers = []
+building_stage = 'TAKE'
+curr_box_color = 0
+complete_towers = 0
 
 # ------------------------------DEBUG------------------------------
 class Debug:
@@ -79,6 +87,8 @@ class MotorsController:
         self.motor_claw = MediumMotor(pin_motors['CLAW'])
         self.motors_s = MoveSteering(pin_motors['LEFT'], pin_motors['RIGHT'])
         self.motors_t = MoveTank(pin_motors['LEFT'], pin_motors['RIGHT'])
+        self.lift_state = 'UP'
+        self.claw_state = 'OPENED'
 
     def get_motor_enc(self, motor='LEFT'):
         if motor == 'LEFT':
@@ -106,25 +116,79 @@ class MotorsController:
         angle = 180 * cross_center_dist // wheel_radius * 3.14
         self.motors_s.on_for_degrees(steering=0, speed=motor_speed, degrees=angle)
 
-    def lift_up(self):
-        self.motor_lift.on_for_degrees(speed=-lift_speed, degrees=lift_max_angle, block=False)  # Attention!
+    def lift_up(self, block=False):
+        self.motor_lift.on_for_degrees(speed=-lift_speed, degrees=lift_max_angle, block=block)  # Attention!
+        self.lift_state = 'UP'
 
-    def lift_down(self):
-        self.motor_lift.on_for_degrees(speed=lift_speed, degrees=lift_max_angle, block=False)  # Attention!
+    def lift_down(self, block=False):
+        self.motor_lift.on_for_degrees(speed=lift_speed, degrees=lift_max_angle, block=block)  # Attention!
+        self.lift_state = 'DOWN'
 
     def claw_open(self):
         self.motor_claw.on_for_degrees(speed=motor_speed, degrees=claw_max_angle)  # Attention! Speed signs!
+        self.lift_state = 'OPENED'
 
     def claw_close(self):
         self.motor_claw.on_for_degrees(speed=-motor_speed, degrees=claw_max_angle)  # Attention! Speed signs!
+        self.lift_state = 'CLOSED'
 
 
-def line_move(mc):
+def lap_update(mc):
+    global building_stage, curr_box_color, complete_towers
+
+    if 0 < sens_mark.color < 7:
+        # Build map
+        if len(boxes) < 6 and boxes[-1] != sens_mark:
+            boxes.append(sens_mark.color)
+            print(boxes)
+        elif len(towers) < 6 and towers[-1] != sens_mark:
+            towers.append(sens_mark.color)
+            print(boxes)
+
+        # Stages
+        if building_stage == 'TAKE':  # Готовность к взятию коробки(первого)
+            curr_box_color = sens_mark.color
+            mc.move_to_mark_center()  # Доезжаем чуть вперёд  колёсами, чтобы взять коробку
+            mc.lift_down()  # Опускаем лифт, берём коробку, поднимаем её
+            mc.claw_close()
+            mc.lift_up()
+            building_stage = 'DELIVER'  # После взятия коробки просто едем и считываем цвета коробкок
+            line_move(mc, lap=True)
+            mc.rotate_90_right() # Разворачиваемся и едем до линии с башнями
+            line_move(mc, lap=False)
+            mc.rotate_90_right()
+            building_stage = 'PUT'  # Начинаем ехать по линии со стадией PUT
+            line_move(mc, lap=True)
+            return True  # End
+
+        if building_stage == 'DELIVER':
+            pass
+
+        if building_stage == 'PUT':
+            if sens_mark.color == curr_box_color:
+                mc.move_to_mark_center()  # Если обнаружили башню цвета схожего с коробкой, то отпускаем коробку
+                mc.claw_open()
+                complete_towers += 1
+                building_stage = 'DELIVER'  # После "строительства" башни просто едем и считываем цилиндры
+                line_move(mc, lap=True)
+                if complete_towers == 6: # Построили все башни? Едем на финиш
+                    mc.rotate_90_right()
+                    line_move(mc, lap=False)
+                    mc.move_to_finish()
+                    return True  # End
+                else:  # Не построили? едем на n-ый круг
+                    building_stage = 'TAKE'
+                    line_move(mc, lap=True)
+                    return True  # End?????????
+
+    return False
+
+
+def line_move(mc, lap=False):
     last_error = 0
     # Cross or distantion
-    while sens_right.reflected_light_intensity > middle_val or \
-            sens_left.reflected_light_intensity > middle_val:
-        error = sens_left.reflected_light_intensity - sens_right.reflected_light_intensity
+    while sens_cross.reflected_light_intensity > middle_val:  # while not black
+        error = sens_line.reflected_light_intensity - middle_val
         # Calculate PID(PD) value
         p_val = error * kP
         d_val = (error - last_error) * kD
@@ -137,8 +201,16 @@ def line_move(mc):
         else:
             result = abs(motor_speed) + first_result
             mc.motors_t.on(left_speed=motor_speed, right_speed=result * sign(motor_speed))
-        # Save last_sens_left_val to next while iteration
+        # Save last_sens_line_val to next while iteration
         last_error = error
+
+        # Lap
+        if lap:
+            end = lap_update()
+            if end:
+                break
+
+        # Emergency shutdown
         if Button().buttons_pressed == ['backspace']:
             break
 

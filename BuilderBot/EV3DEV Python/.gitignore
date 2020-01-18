@@ -17,7 +17,8 @@
 # Generated files
 .idea/**/contentModel.xml
 /venv/
-/idea/
+/.idea/
+/.idea/workspace.xml
 
 # Sensitive or high-churn files
 .idea/**/dataSources/
