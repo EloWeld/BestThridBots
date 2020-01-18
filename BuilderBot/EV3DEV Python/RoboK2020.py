@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import time
 
-from ev3dev2.motor import LargeMotor, OUTPUT_A, OUTPUT_B, OUTPUT_C, OUTPUT_D, MoveSteering, MoveTank
+from ev3dev2.motor import LargeMotor, MediumMotor, OUTPUT_A, OUTPUT_B, OUTPUT_C, OUTPUT_D, MoveSteering, MoveTank
 from ev3dev2.sensor.lego import ColorSensor
 from ev3dev2.sensor import INPUT_1, INPUT_2, INPUT_3, INPUT_4
 from ev3dev2.led import Leds
@@ -10,21 +10,28 @@ from ev3dev2.button import Button
 
 # ------------------------------PINS------------------------------
 pin_motors = {'LEFT': OUTPUT_A,
-              'RIGHT': OUTPUT_D}
+              'RIGHT': OUTPUT_D,
+              'LIFT': OUTPUT_B,
+              'CLAW': OUTPUT_C}
 
-sens_line = ColorSensor(INPUT_1)
-sens_cross = ColorSensor(INPUT_4)
+sens_left = ColorSensor(INPUT_1)
+sens_right = ColorSensor(INPUT_4)
 
 # ------------------------------CONSTANS------------------------------
 # Movement
-wheel_radius = 55 // 2
-rotate_radius = 150 // 2
+wheel_radius = 55 // 2  # mm
+rotate_radius = 150 // 2  # mm
 motor_speed = -60
-cross_center_dist = 120
-dist_to_cube = 335 - cross_center_dist
+cross_center_dist = 125
+
+# Claw
+lift_max_angle = 105
+lift_speed = 50
+claw_speed = 100
+claw_max_angle = 1800
 
 # Color
-white_val = 66
+white_val = 60
 black_val = 10
 middle_val = (white_val + black_val) / 2 - 10  # Not middle yet
 
@@ -59,8 +66,8 @@ def sign(x):
     return -1 if x < 0 else (1 if x > 0 else 0)
 
 
-def dist_to_angle(dist):
-    return 180 * dist // wheel_radius * 3.14
+def dist_to_degrees(dist):
+    return 180 * dist // wheel_radius * 3.14  # dist / 2 * pi * r / 360
 
 
 # ---------MOTORS-------------
@@ -68,6 +75,8 @@ class MotorsController:
     def __init__(self):
         self.motor_left = LargeMotor(pin_motors['LEFT'])
         self.motor_right = LargeMotor(pin_motors['RIGHT'])
+        self.motor_lift = LargeMotor(pin_motors['LIFT'])
+        self.motor_claw = MediumMotor(pin_motors['CLAW'])
         self.motors_s = MoveSteering(pin_motors['LEFT'], pin_motors['RIGHT'])
         self.motors_t = MoveTank(pin_motors['LEFT'], pin_motors['RIGHT'])
 
@@ -97,22 +106,30 @@ class MotorsController:
         angle = 180 * cross_center_dist // wheel_radius * 3.14
         self.motors_s.on_for_degrees(steering=0, speed=motor_speed, degrees=angle)
 
+    def lift_up(self):
+        self.motor_lift.on_for_degrees(speed=-lift_speed, degrees=lift_max_angle, block=False)  # Attention!
 
-def line_move(mc, distantion=0):
+    def lift_down(self):
+        self.motor_lift.on_for_degrees(speed=lift_speed, degrees=lift_max_angle, block=False)  # Attention!
+
+    def claw_open(self):
+        self.motor_claw.on_for_degrees(speed=motor_speed, degrees=claw_max_angle)  # Attention! Speed signs!
+
+    def claw_close(self):
+        self.motor_claw.on_for_degrees(speed=-motor_speed, degrees=claw_max_angle)  # Attention! Speed signs!
+
+
+def line_move(mc):
     last_error = 0
-    # Save initially values on encoders(in degrees)
-    motor_l_enc = mc.get_motor_enc('LEFT')
-    motor_r_enc = mc.get_motor_enc('RIGHT')
     # Cross or distantion
-    condition = (sens_cross.reflected_light_intensity > middle_val) if distantion == 0 else \
-        (mc.get_motor_enc('LEFT') - motor_l_enc < dist_to_angle(distantion) and
-         mc.get_motor_enc('RIGHT') - motor_r_enc < dist_to_angle(distantion))
-    while condition:
-        error = sens_line.reflected_light_intensity
+    while sens_right.reflected_light_intensity > middle_val or \
+            sens_left.reflected_light_intensity > middle_val:
+        error = sens_left.reflected_light_intensity - sens_right.reflected_light_intensity
         # Calculate PID(PD) value
         p_val = error * kP
         d_val = (error - last_error) * kD
         first_result = p_val - d_val
+        print('ER: {}; P: {}; D: {}; FV: {}'.format(error, p_val, d_val, first_result))
         # Run motors with speed by PID(P) value
         if first_result > 0:
             result = abs(motor_speed) - first_result
@@ -120,39 +137,18 @@ def line_move(mc, distantion=0):
         else:
             result = abs(motor_speed) + first_result
             mc.motors_t.on(left_speed=motor_speed, right_speed=result * sign(motor_speed))
-        # Save last_sens_line_val to next while iteration
+        # Save last_sens_left_val to next while iteration
         last_error = error
+        if Button().buttons_pressed == ['backspace']:
+            break
 
     # Stop motors after cross/distantion_limit
     mc.motors_t.stop()
-'''
-old_value_main_sensor = 0
-new_value_main_sensor = 0
-white_value = 53
-black_value = 5
-kp = 1
-kd = 3
-port_left_sensor = 2
-port_right_sensor = 3
-motor_power_value = 30
-middle_value = (white_value + black_value) / 2 - 10
-while "true"
-  new_value_main_sensor = Sensor.readPercent(port_right_sensor) - middle_value
-  proportional_value = (new_value_main_sensor - middle_value) * kp
-  differential_value = (new_value_main_sensor - old_value_main_sensor) * kd
-  first_result = proportional_value - differential_value
-  if (first_result > 0) then
-    result = motor_power_value - first_result
-    Motor.StartPower("B", -result)
-    Motor.StartPower("C", -motor_power_value)
-  else
-    result = motor_power_value + first_result
-    Motor.StartPower("B", -motor_power_value)
-    Motor.StartPower("C", -result)
-  endif
-  old_value_main_sensor = new_value_main_sensor
-endwhile
-'''
+
+
+def move_dist(mc : MotorsController, dist):
+    mc.motors_s.on_for_degrees(steering=0, speed=motor_speed, degrees=dist_to_degrees(dist))
+
 
 # ------------------------------MAIN------------------------------
 def setup():
@@ -163,18 +159,21 @@ def main():
     setup()
     mc = MotorsController()
 
-    line_move(mc)
-    Debug.beep()
+    mc.claw_close()
     Button().wait_for_bump(['enter'])
-    mc.rotate_180_right()
-    Debug.beep()
+    mc.lift_up()
+    Button().wait_for_bump(['enter'])
+    mc.lift_down()
+    Button().wait_for_bump(['enter'])
+    mc.claw_open()
+    Button().wait_for_bump(['enter'])
+    move_dist(mc, 200)
+    time.sleep(2)
+    line_move(mc)
+    mc.move_to_cross_center()
     Button().wait_for_bump(['enter'])
     mc.rotate_90_left()
-
-    Debug.beep()
-    while Button().buttons_pressed != ['up']:
-        Sound().play_file('/home/robot/troll.wav', 70)
-        print('HA-HA!')
+    Sound().beep()
 
 
 if __name__ == '__main__':
