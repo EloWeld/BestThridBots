@@ -54,21 +54,21 @@ dist_to_end_balls_lay = 100
 
 n_degreese = 450 'Need to calculate
 dist_to_box = 6 'Need to calculate!
-dist_back_from_line = 20 'Need to calculate!
 dist_between_balls = 5 'Need to calculate!
-dist_between_boxes = 70 'Need to calculate!
-dist_to_boxes[1] = 100 'Need to calculate!
-for i = 2 to 10
-  dist_to_boxes[i] = dist_to_boxes[i - 1] + dist_between_boxes
-endfor
-dists[1] = (rotate_radius / 10) + dist_to_sensors + 1 'От старта до горки
-dists[2] = 70 ' От средней линии, до бетона
-dists[3] = 92 ' До средней линии
-dists[4] = 20 ' До средней линии
+dist_between_boxes = 4.8 'Need to calculate!
+dist_to_boxes[1] = 42 
+dists[1] = (rotate_radius / 10) + dist_to_sensors + 1 'От старта до линии горки
+dists[2] = 70 ' От средней линии, до бетонного корыта
+dists[3] = 92 ' От линии горки до средней линии
+dists[4] = 20 ' Отъезд назад к линии бетона
+dists[5] = 22 'Отъезд назад от красной линии
+dists[6] = 20 'Проехать в опалубку для высвобождения бетона
+
 
 '==============================VARIABLES==============================
 f_dist = 0
 balls_dist[1] = 0
+curr_box = 1
 red_line = "false"
 stop = 0
 n = 0
@@ -195,7 +195,7 @@ sub grab_ball_45
 endsub
 
 sub release_ball
-  angle = 180 * dist_to_first_layer / wheel_radius * 3.14 'Need to calculate
+  angle = 180 * dists[6] / wheel_radius * 3.14 'Need to calculate
   turn_90_left()
   Motor.MoveSync(port_motors, motor_power, motor_power, angle, "true") 'Move to cell
   Motor.Move(port_claw, -claw_speed, claw_degrees, "true") 'Release
@@ -207,14 +207,7 @@ sub checking_balls
   ' KTO SIEL MOI SPAGETTI
 endsub
 
-'==============================MAIN==============================
-Sub setup
-  Sensor.SetMode(port_sens_cross, 0)
-  Sensor.SetMode(port_sens_line, 0)
-  Sensor.SetMode(port_ultrasonic_sens, 0)
-endsub
-
-Sub main
+sub play_fanfars
   Speaker.Note(5, "C4", 50)  
   Speaker.Wait()
   Speaker.Note(5, "E4", 50) 
@@ -231,7 +224,16 @@ Sub main
   Speaker.Wait() 
   Speaker.Note(5, "C5", 200) 
   Speaker.Wait() 
-  
+endsub
+'==============================MAIN==============================
+Sub setup
+  Sensor.SetMode(port_sens_cross, 0)
+  Sensor.SetMode(port_sens_line, 0)
+  Sensor.SetMode(port_ultrasonic_sens, 0)
+endsub
+
+Sub main
+  play_fanfars()
   Motor.Move(port_claw, -claw_speed, claw_degrees, "true") 'Открываем клешню
   move_until_cross() ' Едем до начала линии старта
   f_dist = dists[1]
@@ -260,24 +262,7 @@ Sub main
     dist_to_degrees()
     Motor.MoveSync(port_motors, motor_power, motor_power, degrees, "true")
     Speaker.Note(60, "B3", 300)
-  '  
-    'f_dist = 4.1
-    'dist_to_degrees()
-    'For i = 1 To 5
-    '  Motor.MoveSync(port_motors, motor_power, motor_power, degrees, "false")
-    '  If (Sensor.ReadRawValue(port_ultrasonic_sens, 0) < dist_to_second_balls_lay) then
-    '    balls_dist[i] = 1
-    '    Speaker.Note(60, "C4", 500)
-    '    Speaker.Wait()
-    '  Else
-    '    If (Sensor.ReadRawValue(port_ultrasonic_sens, 0) < dist_to_end_balls_lay) then
-    '      balls_dist[i] = 2
-    '    Else
-    '      balls_dist[i] = 0
-    '    EndIf
-    '  EndIf
-    '  'TextWindow.WriteLine(balls_dist[i])
-    'EndFor
+    
     f_dist = dist_to_ultrasonic
     dist_to_degrees()
     Motor.MoveSync(port_motors, -motor_power, -motor_power, degrees, "true")
@@ -297,94 +282,38 @@ Sub main
     move_to_cross_center()
     turn_90_right()
     move_line_until_cross()
-    f_dist = dist_back_from_line
+    ''''''''''''''''''''''''''''''''''''''''''
+    ' Едем назад от красной линии до проезда к коробкам и выравниваемся
+    f_dist = dists[5]
     dist_to_degrees()
     Motor.MoveSync(port_motors, -motor_power, -motor_power, degrees, "true")
     turn_90_right()
-    f_dist = dist_to_boxes[1]
+    line_aligment()
+    
+    ' Едем до склада коробок И выпускаем(кидаем) бетон(шарик)
+    f_dist = dist_to_boxes + ((curr_box - 1) * dist_between_boxes)
     dist_to_degrees()
     Motor.MoveSync(port_motors, motor_power, motor_power, degrees, "true")
-    turn_90_left()
-    f_dist = dist_to_box
-    dist_to_degrees()
-    Motor.MoveSync(port_motors, motor_power, motor_power, degrees, "true") 'подъезжаем немного вперёд
     release_ball()
-    Speaker.Note(60, "B3", 300)
-    'возврат к линии
-    f_dist = dist_to_box + 4
+    play_fanfars()
+    
+    'Возврат к линии
+    f_dist = dist_to_boxes - 5
     dist_to_degrees()
-    Motor.MoveSync(port_motors, -motor_power, -motor_power, degrees, "true") 'отъезжаем от коробочки
-    turn_90_left()
+    Motor.MoveSync(port_motors, motor_power, motor_power, degrees, "true")
     move_until_cross()
-    move_to_cross_center()
     turn_90_left()
-    move_line_until_cross()
-    f_dist = dist_back_from_line
+    move_until_cross() ' До красной линии ближней стороны
+    
+    ' Отъезжаем назад к линии бетона
+    f_dist = dists[4]
     dist_to_degrees()
     Motor.MoveSync(port_motors, -motor_power, -motor_power, degrees, "true")
     turn_90_left()
+ 
   'endwhile !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Он нужен =) 
-    f_dist = dist_back_from_line
-    dist_to_degrees()
-    Motor.MoveSync(port_motors, -motor_power, -motor_power, degrees, "true")
-  '  line_aligment()
-  '  turn_90_left()
-  '  dist = 70 'Need to calculate!
-  '  dist_to_degrees()
-  '  Motor.MoveSync(port_motors, motor_power, motor_power, degrees, "true")
-  '  'for i = 1 to 10
-  '  turn_90_right()
-  '  dist = 7 'Need to calculate!
-  '  dist_to_degrees()
-  '  Motor.MoveSync(port_motors, motor_power, motor_power, degrees, "true")
   endif
 endsub
   
 setup()
 main()
-  'the robot in front of the ball zone now
-'  take_ball()
-'  Motor.MoveSync(port_motors, -motor_power, -motor_power, degrees, "true")
-'  turn_90_right()
-'  dist = 70 'Need to calculate!
-'  dist_to_degrees()
-'  Motor.MoveSync(port_motors, motor_power, motor_power, degrees, "true")
-'  line_aligment()
-'  move_to_cross_center()
-'  turn_90_right()
-'  line_moving()
-'  dist = 400 'Need to calculate!
-'  dist_to_degrees()
-'  Motor.MoveSync(port_motors, -motor_power, -motor_power, degrees, "true")
-'  turn_90_right()
-'  dist = dist_to_boxes[i]
-'  dist_to_degrees()
-'  Motor.MoveSync(port_motors, motor_power, motor_power, degrees, "true")
-'  put_ball()
-'  dist = 70 'Need to calculate!
-'  dist_to_degrees()
-'  Motor.MoveSync(port_motors, motor_power, motor_power, degrees, "true")
-'  line_aligment()
-'  if (i <> 10) then
-'    move_to_cross_center()
-'    turn_90_left()
-'    line_moving()
-'    dist = 400 'Need to calculate!
-'    dist_to_degrees()
-'    Motor.MoveSync(port_motors, -motor_power, -motor_power, degrees, "true")
-'    turn_90_left()
-'    dist = 1000 'Need to calculate!
-'    dist_to_degrees()
-'    Motor.MoveSync(port_motors, motor_power, motor_power, degrees, "true")
-'  else
-'    dist = 560 'Need to calculate!
-'    dist_to_degrees()
-'    Motor.MoveSync(port_motors, motor_power, motor_power, degrees, "true")
-'    turn_90_left()
-'    dist = 100 'Need to calculate!
-'    dist_to_degrees()
-'    Motor.MoveSync(port_motors, motor_power, motor_power, degrees, "true")
-'    line_aligment()
-'    move_to_cross_center()
-'  endif
-'endfor
